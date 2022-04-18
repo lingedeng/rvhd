@@ -1,0 +1,11 @@
+[package]
+name = "rvhd-util-convert"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+uuid = { version = "0.8", default-features = false, features = ["v4"] }
+num-traits = { version = "0.2", default-features = false }
+num-derive = { version = "0.3", default-features = false }
