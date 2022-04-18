@@ -1,9 +1,9 @@
-#rvhd
+# rvhd
 rvhd-util-convert
 
-使用rust实现vhd-util-convert功能
-VHD格式标准：`Virtual Hard Disk Format Spec_10_18_06.doc`
-代码参考：[rdisk](https://github.com/vsrs/rdisk)
+1. 使用rust实现vhd-util-convert功能
+2. VHD格式标准：`Virtual Hard Disk Format Spec_10_18_06.doc`
+3. 代码参考：[rdisk](https://github.com/vsrs/rdisk)
 
 ## vhd-util-convert
 Re-packaged vhd-util from [xen-4.4.0](http://bits.xensource.com/oss-xen/release/4.4.0/xen-4.4.0.tar.gz) with patch to add the convert command applied.
