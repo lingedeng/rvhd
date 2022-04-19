@@ -1,6 +1,6 @@
 use crate::{Uuid, UuidEx, sizes, geometry, StructBuffer, ReadAt, WriteAt, Result, AsByteSliceMut, VhdError, math};
 use crate::vhd::{VhdType, vhd_time, VhdImage, DEFAULT_TABLE_OFFSET};
-use std::collections::HashMap;
+use std::path::{Path, MAIN_SEPARATOR};
 
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
@@ -83,8 +83,7 @@ impl VhdHeader {
         }
     }
 
-    pub fn new(capacity: u64, table_offset: u64, block_size: u32, parent: &Option<VhdImage>) -> Self {
-
+    pub fn new(capacity: u64, table_offset: u64, block_size: u32, file_path: &String, parent: &Option<VhdImage>) -> (Self, Vec<u16>) {
         let mut header = StructBuffer::<VhdHeader>::zeroed();        
         header.cookie = DD_COOKIE;
         header.data_offset = DD_OFFSET;
@@ -93,11 +92,13 @@ impl VhdHeader {
         header.max_bat_size = math::ceil(capacity, block_size as u64) as u32;
         header.block_size = block_size;
 
-        if parent.is_none() {
+        let relative_utf16_path = if parent.is_none() {
             header.prt_uuid = Uuid::nil();
             header.prt_ts = 0;
             header.prt_name = unsafe { std::mem::zeroed() };
             header.prt_loc = unsafe { std::mem::zeroed() };
+
+            Vec::new()
         } else {
             let parent_footer = parent.as_ref().map(|img| img.footer()).unwrap();
             header.prt_uuid = parent_footer.uuid().clone();
@@ -116,22 +117,39 @@ impl VhdHeader {
 
             // get bat size
             let bat_size = math::round_up(header.max_bat_size as usize * 4, sizes::SECTOR as usize);
-            header.prt_loc[0].code = PLAT_CODE_W2KU;
-            /*
-             write number of bytes ('size') instead of number of sectors
-             into loc->data_space to be compatible with MSFT, even though
-             this goes against the specs
-            */
-            header.prt_loc[0].data_space = sizes::SECTOR; 
-            // This field stores the actual length of the parent hard disk locator in bytes
-            header.prt_loc[0].data_len = (str_parent_path.encode_utf16().count() * 2) as u32;
-            header.prt_loc[0].data_offset = table_offset + bat_size as u64;
-        }
+            
+            let parent_file_path = parent.as_ref().map(|img| img.file_path().clone()).unwrap();
+            let p: Vec<u16> = Self::relative_path_to(file_path, &parent_file_path)
+                .unwrap()
+                .encode_utf16()
+                .collect();
+
+            for i in 0..2 as usize {
+                /*
+                write number of bytes ('size') instead of number of sectors
+                into loc->data_space to be compatible with MSFT, even though
+                this goes against the specs
+                */
+                header.prt_loc[i].data_space = sizes::SECTOR; 
+                // This field stores the actual length of the parent hard disk locator in bytes
+                header.prt_loc[i].data_len = (p.len() * 2) as u32; //(str_parent_path.encode_utf16().count() * 2) as u32;
+
+                if i == 0 {
+                    header.prt_loc[i].code = PLAT_CODE_W2KU;
+                    header.prt_loc[i].data_offset = table_offset + bat_size as u64;
+                } else {
+                    header.prt_loc[i].code = PLAT_CODE_W2RU;
+                    header.prt_loc[i].data_offset = table_offset + bat_size as u64 + sizes::SECTOR_U64;
+                }                    
+            }
+
+            p
+        };
 
         let checksum = crate::vhd::calc_header_bytes_checksum(&header);
         header.checksum = checksum;        
 
-        header.copy()
+        (header.copy(), relative_utf16_path.clone())
     }
 
     pub fn read(stream: &impl ReadAt, pos: u64) -> Result<Self> {
@@ -159,18 +177,58 @@ impl VhdHeader {
         stream.write_all_at(pos, header.buffer())
     }
 
-    pub fn write_locator(&self, stream: &impl WriteAt, pos: u64, parent: &Option<VhdImage>) -> Result<usize> {
-        let parent_path = parent.as_ref().map(|img| img.file_path()).unwrap();
-        let parent_path: Vec<u16> = parent_path.encode_utf16().collect();
-        
+    pub fn write_locator(&self, stream: &impl WriteAt, index: usize, parent_relative_path: &Vec<u16>) -> Result<usize> {
         let mut temp = [0_u16; 256];
-        temp[..parent_path.len()].copy_from_slice(&parent_path);
+        temp[..parent_relative_path.len()].copy_from_slice(parent_relative_path);
         let buf = unsafe { 
             std::slice::from_raw_parts(temp.as_ptr() as *const u8, sizes::SECTOR as usize)
         };
-        stream.write_all_at(pos, buf).unwrap();
+        stream.write_all_at(self.prt_loc[index].data_offset, buf).unwrap();
 
         Ok(sizes::SECTOR as usize)
+    }
+
+    // return a relative path from @file_path to @parent_file_path
+    fn relative_path_to(file_path: &String, parent_file_path: &String) -> Result<String> {
+        if !Path::new(&file_path).is_absolute() || !Path::new(&parent_file_path).is_absolute() {
+            return Err(VhdError::FilePathNeedAbsolute);
+        }
+
+        let fp_nodes = file_path.split(MAIN_SEPARATOR);
+        let fp_nodes_count = file_path.split(MAIN_SEPARATOR).count();
+        let pfp_nodes = parent_file_path.split(MAIN_SEPARATOR);
+
+        let common_nodes_count = fp_nodes.zip(pfp_nodes).filter(|(n1, n2)| n1 == n2).count();
+
+        if common_nodes_count == 0 {
+            return Err(VhdError::CannotGetRelativePath);
+        }
+
+        let up_nodes = fp_nodes_count - common_nodes_count - 1;
+        let mut prefix = String::new();
+        if up_nodes == 0 {            
+            prefix.push('.');
+            prefix.push(MAIN_SEPARATOR);            
+        } else {
+            for _ in 0..up_nodes {
+                prefix.push_str("..");
+                prefix.push(MAIN_SEPARATOR);
+            }
+        }
+        
+        let pfp_offset = parent_file_path
+            .split(MAIN_SEPARATOR)
+            .skip(common_nodes_count)
+            .collect::<Vec<_>>().join(&MAIN_SEPARATOR.to_string());
+
+        prefix.push_str(&pfp_offset);
+
+        Ok(prefix)
+    }
+
+    pub fn set_parent_loc_data_len(&mut self, len: u32) {
+        self.prt_loc[0].data_len = len;
+        self.prt_loc[1].data_len = len;
     }
 
     pub fn table_offset(&self) -> u64 {

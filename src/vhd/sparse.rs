@@ -1,6 +1,6 @@
 mod header;
 use std::{cell::RefCell, collections::HashMap};
-use std::path::Path;
+use std::path::{Path, MAIN_SEPARATOR};
 
 pub use header::*;
 
@@ -158,24 +158,27 @@ impl SparseExtent {
     }
 
     pub(crate) fn create(file_path: String, footer: &VhdFooter, parent: Option<VhdImage>) -> Result<Self> {
-        let header = VhdHeader::new(footer.current_size(), DEFAULT_TABLE_OFFSET, DD_BLOCKSIZE_DEFAULT, &parent);
+        let (header, relative_utf16_path) = VhdHeader::new(footer.current_size(), DEFAULT_TABLE_OFFSET, DD_BLOCKSIZE_DEFAULT, &file_path, &parent);
         let bat = bat::VhdBat::new(header.max_bat_size());
-        let bitmap_size = math::round_up(math::ceil(header.block_size(), sizes::SECTOR * 8), sizes::SECTOR);
-
+        let bitmap_size = math::round_up(math::ceil(header.block_size(), sizes::SECTOR * 8), sizes::SECTOR);        
+        
         let file = VhdFile::create(&file_path, footer.current_size())?;
         header.write(&file, DEFAULT_HEADER_OFFSET)?;
         let bat_size = bat.write(&file, DEFAULT_TABLE_OFFSET)?;
         let mut next_block_pos = DEFAULT_TABLE_OFFSET + bat_size as u64;
         if parent.is_some() {
-            let locator_size = header.write_locator(&file, next_block_pos, &parent)?;
-            next_block_pos += locator_size as u64;
+            for i in 0..2 as usize {
+                // write W2ku and W2ru
+                let locator_size = header.write_locator(&file, i, &relative_utf16_path)?;
+                next_block_pos += locator_size as u64;
+            }            
         } 
 
         let this = Self::new(file, file_path, header, bat, bitmap_size, next_block_pos);
         this.write_footer(footer)?;
 
         Ok(this)
-    }
+    }    
 }
 
 impl SparseExtent {
