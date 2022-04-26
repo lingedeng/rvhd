@@ -1,5 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use crate::{AsByteSlice, ImageExtent, ImageExtentOps, Result};
+use std::cell::{RefCell, Ref};
 
 pub(crate) fn calc_header_bytes_checksum<T: AsByteSlice>(header: &T) -> u32 {
     let mut new_checksum = 0_u32;
@@ -62,11 +63,18 @@ pub use fixed::*;
 pub mod sparse;
 pub use sparse::*;
 
+pub mod journal;
+pub use journal::*;
+
 trait VhdImageExtent: ImageExtent + ImageExtentOps {
     fn write_footer(&self, footer: &VhdFooter) -> Result<()>;
     fn sparse_header(&self) -> Option<&VhdHeader>;
     fn file_path(&self) -> String;
     fn parent_locator(&self) -> Option<String>;
+    fn parent_locator_data(&self, index: usize) -> Option<Vec<u8>>;
+    fn sparse_bat(&self) -> Option<&RefCell<bat::VhdBat>>;
+    fn sparse_block_bitmap(&self, bat_block_index: usize) -> Option<(u64, &RefCell<Vec<u8>>)>;
+    fn sparse_block_data(&self, bat_block_index: usize, buffer: &mut [u8]) -> Result<u64>;
 }
 
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Eq, PartialEq)]

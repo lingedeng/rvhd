@@ -20,7 +20,8 @@ pub enum VhdError {
     ParentNotExist,
     ParentNotDynamic,
     FilePathNeedAbsolute,
-    CannotGetRelativePath,
+    CannotGetRelativePath, 
+    NeedDyncOrDiffImage,   
 
     Io(std::io::Error),
 }
@@ -49,6 +50,7 @@ impl core::fmt::Display for VhdError {
             VhdError::ParentNotDynamic => f.write_str("Diff parent not dynamic"),
             VhdError::FilePathNeedAbsolute => f.write_str("Need absolute file path"),
             VhdError::CannotGetRelativePath => f.write_str("Cannot get relative path"),
+            VhdError::NeedDyncOrDiffImage => f.write_str("Need dynamic or diff type image"),
             
             VhdError::Io(e) => write!(f, "Io error: {}", e.to_string()),
         }

@@ -232,6 +232,7 @@ impl traits::ReadAt for VhdFile {
 
 impl traits::WriteAt for VhdFile {
     fn write_at(&self, offset: u64, data: &[u8]) -> Result<usize> {
+        //println!("{:?}", data);
         let mut file = self.0.borrow_mut();
         file.seek(SeekFrom::Start(offset))?;
         file.write(data).map_err(From::from)
@@ -242,6 +243,13 @@ impl traits::Flush for VhdFile {
     fn flush(&self) -> Result<()> {
         let mut file = self.0.borrow_mut();
         file.flush().map_err(From::from)
+    }
+}
+
+impl traits::SeekAt for VhdFile {
+    fn seek_at(&self, pos: std::io::SeekFrom) -> Result<u64> {
+        let mut file = self.0.borrow_mut();
+        file.seek(pos).map_err(From::from)
     }
 }
 
@@ -264,7 +272,7 @@ impl VhdFile {
     pub fn size(&self) -> Result<u64> {
         let metadata = self.0.borrow().metadata()?;
         Ok(metadata.len())
-    }
+    }        
 }
 
 #[cfg(test)]

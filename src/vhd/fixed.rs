@@ -1,5 +1,5 @@
 use super::*;
-use crate::{ImageExtent, ReadAt, WriteAt, Flush, VhdFile, sizes};
+use crate::{ImageExtent, ReadAt, WriteAt, Flush, SeekAt, VhdFile, sizes};
 
 
 pub struct FixedExtent {
@@ -38,6 +38,12 @@ impl Flush for FixedExtent {
     }
 }
 
+impl SeekAt for FixedExtent {
+    fn seek_at(&self, pos: std::io::SeekFrom) -> Result<u64> {
+        self.file.seek_at(pos)
+    }
+}
+
 impl ImageExtent for FixedExtent {
     fn backing_files(&self) -> Box<dyn Iterator<Item = String>> {
         Box::new(std::iter::once(self.file_path.clone()))
@@ -66,6 +72,22 @@ impl VhdImageExtent for FixedExtent {
 
     fn parent_locator(&self) -> Option<String> {
         None
+    }
+
+    fn parent_locator_data(&self, index: usize) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn sparse_bat(&self) -> Option<&RefCell<bat::VhdBat>> {
+        None
+    }
+
+    fn sparse_block_bitmap(&self, bat_block_index: usize) -> Option<(u64, &RefCell<Vec<u8>>)> {
+        None
+    }
+
+    fn sparse_block_data(&self, bat_block_index: usize, buffer: &mut [u8]) -> Result<u64> {
+        Ok(0)
     }
 }
 

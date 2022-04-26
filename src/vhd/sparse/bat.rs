@@ -12,7 +12,7 @@ pub struct VhdBat {
     bat: Vec<u32>,
 }
 
-const DD_BLOCK_UNUSED: u32 = 0xFFFF_FFFF;
+pub const DD_BLOCK_UNUSED: u32 = 0xFFFF_FFFF;
 
 impl VhdBat {
     pub fn new(entries: u32) -> Self {
@@ -22,7 +22,10 @@ impl VhdBat {
     }
 
     pub fn read(stream: &impl ReadAt, offset: u64, entries: u32) -> Result<Self> {
+        // read all bat
         let entries = entries as usize;
+        let size = math::round_up(entries * 4, sizes::SECTOR as usize);
+        let entries = size / 4;
 
         let mut table = VhdBat { 
             bat: Vec::with_capacity(entries),
@@ -30,7 +33,7 @@ impl VhdBat {
 
         let buffer = unsafe {
             table.bat.set_len(entries);
-            std::slice::from_raw_parts_mut(table.bat.as_mut_ptr() as *mut u8, entries*4)
+            std::slice::from_raw_parts_mut(table.bat.as_mut_ptr() as *mut u8, entries * 4)
         };
 
         stream.read_exact_at(offset, buffer)?;
@@ -68,12 +71,16 @@ impl VhdBat {
 
     /// The `index` MUST always be valid!
     pub fn set_block_id(&mut self, index: usize, id: u32) -> Result<()> {
-        if index < self.bat.len() {
+        if index >= self.bat.len() {
             return Err(VhdError::InvalidBlockIndex(index));
         }
 
         self.bat[index] = id;
 
         Ok(())
+    }
+
+    pub fn bat_data(&self) -> &Vec<u32> {
+        &self.bat
     }
 }

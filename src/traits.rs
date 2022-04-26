@@ -25,7 +25,7 @@ pub trait ReadAt {
 pub trait WriteAt {
     fn write_at(&self, offset: u64, data: &[u8]) -> Result<usize>;
 
-    fn write_all_at(&self, offset: u64, data: &[u8]) -> Result<()> {
+    fn write_all_at(&self, offset: u64, data: &[u8]) -> Result<()> {        
         let mut offset = offset;
         let mut data = data;
         while !data.is_empty() {
@@ -46,6 +46,10 @@ pub trait WriteAt {
 
 pub trait Flush {
     fn flush(&self) -> Result<()>;
+}
+
+pub trait SeekAt {
+    fn seek_at(&self, pos: std::io::SeekFrom) -> Result<u64>;
 }
 
 pub trait Disk: ReadAt + WriteAt + Flush {
@@ -69,7 +73,7 @@ pub trait DiskImage: Disk {
     fn storage_size(&self) -> Result<u64>;
 }
 
-pub(crate) trait ImageExtentOps: ReadAt + WriteAt + Flush {}
+pub(crate) trait ImageExtentOps: ReadAt + WriteAt + Flush + SeekAt {}
 
 pub trait ImageExtent {
     fn backing_files(&self) -> Box<dyn core::iter::Iterator<Item = String>>;

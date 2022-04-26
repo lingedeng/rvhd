@@ -1,5 +1,7 @@
+use std::io::SeekFrom;
+
 use super::*;
-use crate::{Uuid, math, Result, sizes, ReadAt, WriteAt, Flush, VhdError, Disk, DiskImage, Geometry, VhdFile};
+use crate::{Uuid, math, Result, sizes, ReadAt, WriteAt, Flush, VhdError, Disk, DiskImage, Geometry, VhdFile, SeekAt};
 
 
 pub use sparse::VhdHeader;
@@ -18,8 +20,12 @@ impl Drop for VhdImage {
 
 impl ReadAt for VhdImage {
     fn read_at(&self, offset: u64, data: &mut [u8]) -> Result<usize> {
+        println!("self.capacity: {}", self.capacity()?);
         match math::bound_to(self.capacity()?, offset, data.len()) {
-            Some(data_len) => self.extent.read_at(offset, &mut data[..data_len]),
+            Some(data_len) => {
+                println!("data_len: {}, offset: {}, buf len: {}", data_len, offset, data.len());
+                self.extent.read_at(offset, &mut data[..data_len])
+            },
             None => Err(VhdError::ReadBeyondEOD),
         }
     }
@@ -38,6 +44,12 @@ impl Flush for VhdImage {
     fn flush(&self) -> Result<()> {
         self.extent.write_footer(&self.footer)?;
         self.extent.flush()
+    }
+}
+
+impl SeekAt for VhdImage {
+    fn seek_at(&self, pos: std::io::SeekFrom) -> Result<u64> {
+        self.extent.seek_at(pos)
     }
 }
 
@@ -183,6 +195,26 @@ impl VhdImage {
 
     pub fn parent_locator(&self) -> Option<String> {
         self.extent.parent_locator()
+    }    
+
+    pub fn file_size(&self) -> Result<u64> {
+        self.extent.storage_size()
+    }
+
+    pub fn parent_locator_data(&self, index: usize) -> Option<Vec<u8>> {
+        self.extent.parent_locator_data(index)
+    }
+
+    pub fn sparse_bat(&self) -> Option<&RefCell<bat::VhdBat>> {
+        self.extent.sparse_bat()
+    }
+
+    pub fn sparse_block_bitmap(&self, bat_block_index: usize) -> Option<(u64, &RefCell<Vec<u8>>)> {
+        self.extent.sparse_block_bitmap(bat_block_index)
+    }
+
+    pub fn sparse_block_data(&self, bat_block_index: usize, buffer: &mut [u8]) -> Result<u64> {
+        self.extent.sparse_block_data(bat_block_index, buffer)
     }
 }
 
